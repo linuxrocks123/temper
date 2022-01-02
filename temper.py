@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 # temper.py -*-python-*-
 # Copyright 2018 by Pham Urwen (urwen@mail.ru)
 #
@@ -30,6 +30,12 @@ import select
 import struct
 import sys
 
+def mkpathobj(name,pathname):
+  to_return = lambda: None
+  to_return.name = name
+  to_return.path = pathname
+  return to_return
+
 # Non-standard modules
 try:
   import serial
@@ -60,8 +66,8 @@ class USBList(object):
     Return these names in a set.
     '''
     devices = set()
-    for entry in os.scandir(dirname):
-        if entry.is_dir() and not entry.is_symlink():
+    for entry in map(lambda x: mkpathobj(x,dirname+'/'+x),os.listdir(dirname)):
+        if os.path.isdir(entry.path) and not os.path.islink(entry.path):
           devices |= self._find_devices(os.path.join(dirname, entry.name))
         if re.search('tty.*[0-9]', entry.name):
           devices.add(entry.name)
@@ -95,8 +101,8 @@ class USBList(object):
     USB devices on a system. Return these as a dictionary indexed by the path.
     '''
     info = dict()
-    for entry in os.scandir(Temper.SYSPATH):
-        if entry.is_dir():
+    for entry in map(lambda x: mkpathobj(x,Temper.SYSPATH+'/'+x),os.listdir(Temper.SYSPATH)):
+        if os.path.isdir(entry.path):
           path = os.path.join(Temper.SYSPATH, entry.name)
           device = self._get_usb_device(path)
           if device is not None:
@@ -191,9 +197,9 @@ class USBRead(object):
       print('Data value: %s' % binascii.hexlify(bytes))
 
     info = dict()
-    info['firmware'] = str(firmware, 'latin-1').strip()
-    info['hex_firmware'] = str(binascii.b2a_hex(firmware), 'latin-1')
-    info['hex_data'] = str(binascii.b2a_hex(bytes), 'latin-1')
+    info['firmware'] = firmware.strip()
+    info['hex_firmware'] = binascii.b2a_hex(firmware)
+    info['hex_data'] = binascii.b2a_hex(bytes)
 
     if info['firmware'][:10] == 'TEMPerF1.4':
       info['firmware'] = info['firmware'][:10]
@@ -238,12 +244,12 @@ class USBRead(object):
 
     # Send the "Version" command and save the reply.
     s.write(b'Version')
-    firmware = str(s.readline(), 'latin-1').strip()
+    firmware = s.readline().strip()
 
     # Send the "ReadTemp" command and save the reply.
     s.write(b'ReadTemp')
-    reply = str(s.readline(), 'latin-1').strip()
-    reply += str(s.readline(), 'latin-1').strip()
+    reply = s.readline().strip()
+    reply += s.readline().strip()
     s.close()
 
     info = dict()
@@ -339,7 +345,9 @@ class Temper(object):
         results.append(info)
         continue
       usbread = USBRead(info['devices'][-1], verbose)
-      results.append({ **info, **usbread.read() })
+      to_append = dict(info)
+      to_append.update(usbread.read())
+      results.append(to_append)
     return results
 
   def _add_temperature(self, name, info):
@@ -361,7 +369,7 @@ class Temper(object):
       return '-'
     return '%d%%' % int(info[name])
 
-  def print(self, results, use_json=False):
+  def printout(self, results, use_json=False):
     '''Print out a list of all of the known USB sensor devices on the system.
     If 'use_json' is True, then JSON formatting will be used.
     '''
@@ -423,7 +431,7 @@ class Temper(object):
 
     # By default, output the temperature and humidity for all known sensors.
     results = self.read(args.verbose)
-    self.print(results, args.json)
+    self.printout(results, args.json)
     return 0
 
 
